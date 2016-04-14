@@ -71,6 +71,86 @@ describe('[theo-loader]', () => {
         });
     });
 
+    it('should use default importer method if useWebpackImporter is false', done => {
+        const config = {
+            ...webpackConfigBase,
+            entry: fixtureAbsPath('./no-webpack-importer/entry.js'),
+        };
+        webpack(config, (err, stats) => {
+            should(err).be.empty();
+            stats.compilation.fileDependencies.should.containDeep([
+                fixtureAbsPath('./no-webpack-importer/props.json'),
+                fixtureAbsPath('./no-webpack-importer/import.json'),
+                fixtureAbsPath('./no-webpack-importer/nested-import.json'),
+            ]);
+
+            const result = require(OUTPUT_PATH).default;
+            result.should.have.property('one');
+            result.should.have.property('two');
+            result.should.have.property('three');
+            result.should.have.property('four');
+            result.should.have.property('five');
+            done();
+        });
+    });
+
+    it('should use webpack importer by default', done => {
+        const config = {
+            ...webpackConfigBase,
+            entry: fixtureAbsPath('./webpack-importer/entry.js'),
+        };
+        webpack(config, (err, stats) => {
+            should(err).be.empty();
+            stats.compilation.missingDependencies.should.be.empty();
+            stats.compilation.fileDependencies.should.containDeep([
+                fixtureAbsPath('./webpack-importer/props.hson'),
+                fixtureAbsPath('./webpack-importer/import.hson'),
+                fixtureAbsPath('./webpack-importer/nested-import.hson'),
+            ]);
+
+            const result = require(OUTPUT_PATH).default;
+            result.should.have.property('one');
+            result.should.have.property('two');
+            result.should.have.property('three');
+            result.should.have.property('four');
+            result.should.have.property('five');
+            done();
+        });
+    });
+
+    it('should recognize loaders configured in webpack config', done => {
+        const config = {
+            ...webpackConfigBase,
+            entry: fixtureAbsPath('./webpack-importer-no-explicit-loader/entry.js'),
+            module: {
+                ...webpackConfigBase.module,
+                loaders: webpackConfigBase.module.loaders.concat([
+                    {
+                        test: /\.hson$/,
+                        loader: 'hson',
+                    },
+                ]),
+            },
+        };
+        webpack(config, (err, stats) => {
+            should(err).be.empty();
+            stats.compilation.missingDependencies.should.be.empty();
+            stats.compilation.fileDependencies.should.containDeep([
+                fixtureAbsPath('./webpack-importer-no-explicit-loader/props.hson'),
+                fixtureAbsPath('./webpack-importer-no-explicit-loader/import.hson'),
+                fixtureAbsPath('./webpack-importer-no-explicit-loader/nested-import.hson'),
+            ]);
+
+            const result = require(OUTPUT_PATH).default;
+            result.should.have.property('one');
+            result.should.have.property('two');
+            result.should.have.property('three');
+            result.should.have.property('four');
+            result.should.have.property('five');
+            done();
+        });
+    });
+
     it('should recursively add dependencies', done => {
         const promise1 = new Promise(resolve => {
             const config = {

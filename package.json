@@ -26,8 +26,8 @@
   },
   "homepage": "https://github.com/Autodesk/theo-loader#readme",
   "peerDependencies": {
-    "theo": "^4.2.0",
-    "webpack": "^1.12.13"
+    "theo": "git://github.com/beauroberts/theo.git#feature/custom-importers-npm-git-dep",
+    "webpack": "^1.12.15"
   },
   "devDependencies": {
     "babel-cli": "^6.7.5",
@@ -47,12 +47,13 @@
     "node-sass": "^3.4.2",
     "rimraf": "^2.5.2",
     "should": "^8.2.2",
-    "theo": "^4.2.0",
+    "theo": "git://github.com/beauroberts/theo.git#feature/custom-importers-npm-git-dep",
     "webpack": "^1.12.15"
   },
   "dependencies": {
     "loader-utils": "^0.2.12",
     "vinyl-buffer": "^1.0.0",
-    "vinyl-source-stream": "^1.1.0"
+    "vinyl-source-stream": "^1.1.0",
+    "webpack-core": "^0.6.8"
   }
 }

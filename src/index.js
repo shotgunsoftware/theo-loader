@@ -17,7 +17,7 @@
 import theo from 'theo';
 import loaderUtils from 'loader-utils';
 import path from 'path';
-import fs from 'fs';
+import LoadersList from 'webpack-core/lib/LoadersList';
 import vinylSource from 'vinyl-source-stream';
 import vinylBuffer from 'vinyl-buffer';
 
@@ -66,21 +66,76 @@ module.exports = function theoLoader(content) {
         return options;
     };
 
-    // Recursively add dependencies on imported Design Tokens files
-    const addImportDependencies = (jsonString, filePath) => {
-        const imports = JSON.parse(jsonString).imports;
+    // Get the loaders encoded in this request, or that are configured in webpack options and match this url
+    const loadersForRequest = request => {
+        // Check if there are any loaders encoded in the request
+        const requestParts = request.split('!');
+        const loaders = requestParts.slice(0, -1);
 
-        if (!imports) {
-            return;
+        // Check if there are any loaders configured as options
+        const loaderOptions = this.options && this.options.module && this.options.module.loaders;
+        if (!loaderOptions) {
+            return loaders;
         }
 
-        imports.forEach(importPath => {
-            const importPathAbs = path.resolve(path.dirname(filePath), importPath);
-            this.addDependency(importPathAbs);
+        const loadersList = new LoadersList(loaderOptions);
+        const relPath = requestParts.slice(-1)[0];
+        return loaders.concat(loadersList.match(relPath));
+    };
 
-            // Now add *this* file's dependencies
-            addImportDependencies(fs.readFileSync(importPathAbs, 'utf8'), importPathAbs);
+    // A theo custom importer that uses webpack's importing logic to handle the import
+    const importViaWebpack = (url, dirContext, callback) => {
+        const request = loaderUtils.urlToRequest(url);
+        const loaders = loadersForRequest(request);
+
+        let urlWithLoaders = url;
+        if (!loaders.length) {
+            // Use *this* loader to load the imported file as raw json, if no loaders have been
+            // configured!
+            urlWithLoaders = `${__filename}?transform=web&format=raw.json!${url}`;
+        }
+        this.loadModule(urlWithLoaders, (err, source, map, module) => {
+            if (err) {
+                callback(err);
+                return;
+            }
+
+            callback(null, {
+                path: replaceExtension(module.resource, '.json'),
+                contents: JSON.stringify(this.exec(source, module.resource)),
+            });
         });
+    };
+
+    // Merge theo-loader's custom import functions with any that might have been specified by the user
+    const mergeCustomImporterOptions = (transformOptions, useWebpackImporter) => {
+        const newOptions = Object.assign({}, transformOptions);
+
+        if (!transformOptions.importer) {
+            newOptions.importer = [];
+        } else if (typeof transformOptions.importer === 'function') {
+            newOptions.importer = [transformOptions.importer];
+        }
+
+        const additionalImporters = [
+            (url, dirContext, callback) => {
+                // This is just a passthrough importer that's used when Design Properties importrs
+                // are *not* imported with `importViaWebpack` above - it records the dependency for
+                // webpack but allows a subsequent importer, or the default importer, to do the
+                // actual business of importing the file.
+                const relPath = url.split('!').slice(-1)[0];
+                this.addDependency(path.resolve(dirContext, relPath));
+                return callback(null, null);
+            },
+        ];
+
+        if (useWebpackImporter) {
+            additionalImporters.unshift(importViaWebpack);
+        }
+
+        newOptions.importer = additionalImporters.concat(newOptions.importer);
+
+        return newOptions;
     };
 
     // Return the output of the theo format plugin as a Javascript module definition.
@@ -110,6 +165,12 @@ module.exports = function theoLoader(content) {
     const transform = query.transform || 'web';
     const format = query.format || 'json';
 
+    // Use the webpack importing logic by default
+    let useWebpackImporter = true;
+    if (query.hasOwnProperty('useWebpackImporter')) {
+        useWebpackImporter = query.useWebpackImporter;
+    }
+
     this.cacheable();
     const callback = this.async();
 
@@ -122,24 +183,15 @@ module.exports = function theoLoader(content) {
         jsonContent = content;
     }
 
-    // Add a dependency on each of the imported Design Tokens files, recursively
-    try {
-        addImportDependencies(jsonContent, this.resourcePath);
-    } catch (e) {
-        process.nextTick(() => {
-            callback(e);
-        });
-        return;
-    }
-
     const stream = bufferToStream(jsonContent, this.resourcePath);
-    const options = getOptions(transform, format);
+    const { transform: transformOptions, format: formatOptions } = getOptions(transform, format);
+    const mergedTransformOptions = mergeCustomImporterOptions(transformOptions, useWebpackImporter);
 
     stream
         .pipe(vinylBuffer())
-        .pipe(theo.plugins.transform(transform, options.transform))
+        .pipe(theo.plugins.transform(transform, mergedTransformOptions))
         .on('error', callback)
-        .pipe(theo.plugins.format(format, options.format))
+        .pipe(theo.plugins.format(format, formatOptions))
         .on('error', callback)
         .pipe(theo.plugins.getResult(result => {
             // Convert the result into a JS module

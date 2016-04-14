@@ -104,7 +104,7 @@ See the [theo documentation](https://github.com/salesforce-ux/theo) for more inf
 
 ## theo Initialization
 
-You can perform any initialization for theo, like registering custom transforms or formatters using `registerTransform`, `registerValueTransform` or `registerFormat`, outside of theo-loader. In `webpack.config.js`, for example:
+You can perform any initialization for theo, like registering custom transforms, formatters or custom importers, using `registerTransform`, `registerValueTransform`, `registerFormat`, and `registerImporter` outside of theo-loader. In `webpack.config.js`, for example:
 
 ```javascript
 var theo = require('theo');
